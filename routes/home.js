@@ -54,7 +54,7 @@ router.post('/register', async (req, res) => {
       balance: "0"
     });
 
-    res.status(200).json({ message: "Register berhasil" });
+    res.status(200).json({ message: "berhasil" });
   } catch (error) {
     res.status(400).send(error.message);
   }
