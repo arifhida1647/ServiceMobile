@@ -42,10 +42,6 @@ router.post('/register', async (req, res) => {
       noTlp,
       country
     });
-    await addDoc(collection(firestore, 'notification'), {
-      userName,
-      message: []
-    });
     await addDoc(collection(firestore, 'card'), {
       userName,
       bank: "Fulus Bank",
@@ -56,10 +52,6 @@ router.post('/register', async (req, res) => {
     await addDoc(collection(firestore, 'balance'), {
       userName,
       balance: "0"
-    });
-    await addDoc(collection(firestore, 'History'), {
-      userName,
-      history: [],
     });
 
     res.status(200).json({ message: "Register berhasil" });
