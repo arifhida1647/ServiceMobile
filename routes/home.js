@@ -5,7 +5,7 @@ const router = express.Router();
 
 const { initializeApp } = require("firebase/app");
 const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, } = require("firebase/auth");
-const { getFirestore, getDoc,getDocs,addDoc,setDoc, doc, writeBatch,collection, query, collectionGroup,where,runTransaction } = require('firebase/firestore');
+const { getFirestore,deleteDoc, orderBy, getDoc,getDocs,addDoc,setDoc, doc, writeBatch,collection, query, collectionGroup,where,runTransaction } = require('firebase/firestore');
 
 // Your Firebase configuration
 const firebaseConfig = {
@@ -24,6 +24,39 @@ const firebaseApp = initializeApp(firebaseConfig);
 const auth = getAuth(firebaseApp);
 const firestore = getFirestore(firebaseApp);
 
+// Fungsi untuk menghapus dokumen dari koleksi tertentu berdasarkan userName
+const deleteDocuments = async (collectionName, userName) => {
+  const collectionRef = collection(firestore, collectionName);
+  const q = query(collectionRef, where("userName", "==", userName));
+  const querySnapshot = await getDocs(q);
+
+  const deletePromises = [];
+  querySnapshot.forEach((document) => {
+    deletePromises.push(deleteDoc(doc(firestore, collectionName, document.id)));
+  });
+
+  await Promise.all(deletePromises);
+};
+
+router.delete('/delete/:userName', async (req, res) => {
+  const userName = req.params.userName;
+
+  try {
+    // Hapus dari koleksi 'balance'
+    await deleteDocuments('balance', userName);
+
+    // Hapus dari koleksi 'users'
+    await deleteDocuments('users', userName);
+
+    // Hapus dari koleksi 'card'
+    await deleteDocuments('card', userName);
+
+    res.status(200).send(`Dokumen dengan userName ${userName} berhasil dihapus.`);
+  } catch (error) {
+    console.error("Terjadi kesalahan saat menghapus dokumen:", error);
+    res.status(500).send("Terjadi kesalahan saat menghapus dokumen.");
+  }
+});
 
 // Endpoint untuk registrasi
 router.post('/register', async (req, res) => {
@@ -137,7 +170,7 @@ router.get('/cekHistory', async (req, res) => {
   const { userName } = req.query;
 
   try {
-    const q = query(collection(firestore, 'History'), where('userName', '==', userName));
+    const q = query(collection(firestore, 'History'), where('userName', '==', userName), orderBy('date', 'desc')); // Mengurutkan berdasarkan tanggal terbaru
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
@@ -147,12 +180,17 @@ router.get('/cekHistory', async (req, res) => {
       querySnapshot.forEach((doc) => {
         profiles.push(doc.data());
       });
+
+      // Sorting the profiles based on date (newest first)
+      profiles.sort((a, b) => b.date.seconds - a.date.seconds);
+
       res.status(200).send(profiles);
     }
   } catch (error) {
     res.status(400).send(error.message);
   }
 });
+
 
 
 router.post('/topUp', async (req, res) => {
