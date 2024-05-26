@@ -178,11 +178,23 @@ router.get('/cekHistory', async (req, res) => {
     } else {
       const profiles = [];
       querySnapshot.forEach((doc) => {
-        profiles.push(doc.data());
+        const data = doc.data();
+        // Format the date field to a string
+        if (data.date) {
+          const dateObj = data.date.toDate();
+          data.date = dateObj.toLocaleString('id-ID', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+          });
+        }
+        profiles.push(data);
       });
 
       // Sorting the profiles based on date (newest first)
-      profiles.sort((a, b) => b.date.seconds - a.date.seconds);
+      profiles.sort((a, b) => b.date - a.date);
 
       res.status(200).send(profiles);
     }
