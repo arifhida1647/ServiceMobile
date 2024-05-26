@@ -1,0 +1,199 @@
+require('dotenv').config();
+const express = require('express');
+const bodyParser = require('body-parser');
+const router = express.Router();
+
+const { initializeApp } = require("firebase/app");
+const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, } = require("firebase/auth");
+const { getFirestore, getDoc,getDocs,addDoc,setDoc, doc, writeBatch,collection, query, collectionGroup,where,runTransaction } = require('firebase/firestore');
+
+// Your Firebase configuration
+const firebaseConfig = {
+  apiKey: process.env.FIREBASE_API_KEY,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.FIREBASE_APP_ID
+};
+
+// Initialize Firebase App
+const firebaseApp = initializeApp(firebaseConfig);
+
+// Inisialisasi Firebase Authentication
+const auth = getAuth(firebaseApp);
+const firestore = getFirestore(firebaseApp);
+
+
+// Endpoint untuk registrasi
+router.post('/register', async (req, res) => {
+  const { email, password,nama, userName, noTlp, country } = req.body;
+
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    // Lakukan sesuatu dengan user jika registrasi berhasil
+    
+    // Simpan data tambahan pengguna ke Firestore
+    await addDoc(collection(firestore, 'users'), {
+      nama,
+      email,
+      userName,
+      noTlp,
+      country
+    });
+    await addDoc(collection(firestore, 'notification'), {
+      userName,
+      message: []
+    });
+    await addDoc(collection(firestore, 'card'), {
+      userName,
+      bank: "Fulus Bank",
+      cardNumber: "200",
+      status : "active",
+      valid: new Date()
+    });
+    await addDoc(collection(firestore, 'balance'), {
+      userName,
+      balance: "0"
+    });
+    await addDoc(collection(firestore, 'History'), {
+      userName,
+      history: [],
+    });
+
+    res.status(200).json({ message: "Register berhasil" });
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+// Endpoint untuk login
+router.post('/login', async (req, res) => {
+  const { userName, password } = req.body;
+
+  try {
+    // Lakukan verifikasi kredensial menggunakan signInWithEmailAndPassword
+    const q = query(collection(firestore, 'users'), where('userName', '==', userName));
+    const querySnapshot = await getDocs(q);
+    const profiles = [];
+    if (querySnapshot.empty) {
+      return res.status(400).send({ message: "User tidak ditemukan" });
+    } else {
+      querySnapshot.forEach((doc) => {
+        profiles.push(doc.data());
+      });
+    }
+    const email = profiles[0].email;
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    // Lakukan sesuatu dengan user jika login berhasil
+    return res.status(200).json({ message: "Login berhasil" });
+  } catch (error) {
+    return res.status(400).send({ message: "error" });
+  }
+});
+
+
+router.get('/cekSaldo', async (req, res) => {
+  const { userName } = req.query;
+
+  try {
+    const q = query(collection(firestore, 'balance'), where('userName', '==', userName));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      res.status(400).send("User tidak ditemukan");
+    } else {
+      const balances = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        if (data.balance !== undefined) {
+          balances.push(data.balance);
+        }
+      });
+      res.status(200).json({ message: balances[0]});
+    }
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+
+router.get('/cekProfile', async (req, res) => {
+  const { userName } = req.query;
+
+  try {
+    const q = query(collection(firestore, 'users'), where('userName', '==', userName));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      res.status(400).send("User tidak ditemukan");
+    } else {
+      const profiles = [];
+      querySnapshot.forEach((doc) => {
+        profiles.push(doc.data());
+      });
+      res.status(200).send(profiles[0]);
+    }
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+router.get('/cekHistory', async (req, res) => {
+  const { userName } = req.query;
+
+  try {
+    const q = query(collection(firestore, 'History'), where('userName', '==', userName));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      res.status(400).send("User tidak ditemukan");
+    } else {
+      const profiles = [];
+      querySnapshot.forEach((doc) => {
+        profiles.push(doc.data());
+      });
+      res.status(200).send(profiles);
+    }
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+
+router.post('/topUp', async (req, res) => {
+  const { userName, jumlah } = req.body;
+
+  try {
+    const q = query(collection(firestore, 'balance'), where('userName', '==', userName));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      res.status(400).send("User tidak ditemukan");
+    } else {
+      // Asumsi hanya ada satu dokumen dengan userName tersebut
+      const userDoc = querySnapshot.docs[0];
+      const userRef = userDoc.ref;
+
+      await runTransaction(firestore, async (transaction) => {
+        const docSnapshot = await transaction.get(userRef);
+
+        if (!docSnapshot.exists()) {
+          throw "User tidak ditemukan";
+        }
+
+        const currentBalance = docSnapshot.data().balance || 0;
+        const newBalance = currentBalance + jumlah; // Menambahkan jumlah langsung ke saldo
+        transaction.update(userRef, { balance: newBalance });
+      });
+
+      res.status(200).send("Top up berhasil");
+    }
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+module.exports = router;
