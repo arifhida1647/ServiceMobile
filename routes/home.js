@@ -243,7 +243,7 @@ router.post('/topUp', async (req, res) => {
       // Call the addHistory function
       await addHistory(firestore, userName, jumlah);
 
-      res.status(200).send("Top up berhasil");
+      res.status(200).send({ message: "TopUp Berhasil" });
     }
   } catch (error) {
     res.status(400).send(error.message);
