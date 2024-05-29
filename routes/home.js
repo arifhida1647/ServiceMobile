@@ -38,11 +38,11 @@ const deleteDocuments = async (collectionName, userName) => {
   await Promise.all(deletePromises);
 };
 
-const addHistory = async (firestore, userName, jumlah) => {
+const addHistory = async (firestore, userName, jumlah, kategori) => {
   const historyData = {
     date: Timestamp.now(), // Using Firebase Timestamp
     jumlah: String(jumlah), // Convert jumlah to string
-    kategori: "topUp",
+    kategori: kategori,
     userName: userName
   };
   await addDoc(collection(firestore, 'History'), historyData);
@@ -241,7 +241,7 @@ router.post('/topUp', async (req, res) => {
       });
 
       // Call the addHistory function
-      await addHistory(firestore, userName, jumlah);
+      await addHistory(firestore, userName, jumlah, "Dana Masuk");
 
       res.status(200).send({ message: "TopUp Berhasil" });
     }
@@ -249,7 +249,6 @@ router.post('/topUp', async (req, res) => {
     res.status(400).send(error.message);
   }
 });
-
 
 
 router.post('/transfer', async (req, res) => {
@@ -261,14 +260,14 @@ router.post('/transfer', async (req, res) => {
     const senderSnapshot = await getDocs(senderQuery);
 
     if (senderSnapshot.empty) {
-      return res.status(400).send("User tidak ditemukan");
+      return res.status(400).send({message: "User tidak ditemukan"});
     }
 
     const senderDoc = senderSnapshot.docs[0];
     const senderData = senderDoc.data();
 
     if (senderData.balance === undefined || senderData.balance < jumlah) {
-      return res.status(400).send("Saldo tidak cukup");
+      return res.status(400).send({message: "Saldo Tidak Cukup"});
     }
 
     // Query the recipient's balance
@@ -276,7 +275,7 @@ router.post('/transfer', async (req, res) => {
     const recipientSnapshot = await getDocs(recipientQuery);
 
     if (recipientSnapshot.empty) {
-      return res.status(400).send("Tujuan tidak ditemukan");
+      return res.status(400).send({message: "Tujuan tidak ditemukan"});
     }
 
     const recipientDoc = recipientSnapshot.docs[0];
@@ -291,11 +290,16 @@ router.post('/transfer', async (req, res) => {
       balance: increment(jumlah)
     });
 
-    res.status(200).send("Transfer berhasil");
+    // Call addHistory function upon successful transfer
+    await addHistory(firestore, userName, jumlah, "Dana Keluar");
+    await addHistory(firestore, tujuan, jumlah, "Dana Masuk");
+
+    res.status(200).send({message: "Transfer Berhasil"});
 
   } catch (error) {
     res.status(400).send(error.message);
   }
 });
+
 
 module.exports = router;
