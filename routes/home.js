@@ -5,7 +5,7 @@ const router = express.Router();
 
 const { initializeApp } = require("firebase/app");
 const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, } = require("firebase/auth");
-const { getFirestore,deleteDoc, orderBy, updateDoc,increment, getDoc,getDocs,addDoc,setDoc, doc, writeBatch,collection, query, collectionGroup,where,runTransaction } = require('firebase/firestore');
+const { getFirestore,Timestamp, deleteDoc, orderBy, updateDoc,increment, getDoc,getDocs,addDoc,setDoc, doc, writeBatch,collection, query, collectionGroup,where,runTransaction } = require('firebase/firestore');
 
 // Your Firebase configuration
 const firebaseConfig = {
@@ -37,6 +37,17 @@ const deleteDocuments = async (collectionName, userName) => {
 
   await Promise.all(deletePromises);
 };
+
+const addHistory = async (firestore, userName, jumlah) => {
+  const historyData = {
+    date: Timestamp.now(), // Using Firebase Timestamp
+    jumlah: String(jumlah), // Convert jumlah to string
+    kategori: "topUp",
+    userName: userName
+  };
+  await addDoc(collection(firestore, 'History'), historyData);
+};
+
 
 router.delete('/delete/:userName', async (req, res) => {
   const userName = req.params.userName;
@@ -229,12 +240,16 @@ router.post('/topUp', async (req, res) => {
         transaction.update(userRef, { balance: newBalance });
       });
 
+      // Call the addHistory function
+      await addHistory(firestore, userName, jumlah);
+
       res.status(200).send("Top up berhasil");
     }
   } catch (error) {
     res.status(400).send(error.message);
   }
 });
+
 
 
 router.post('/transfer', async (req, res) => {
