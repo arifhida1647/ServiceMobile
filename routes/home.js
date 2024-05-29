@@ -5,7 +5,7 @@ const router = express.Router();
 
 const { initializeApp } = require("firebase/app");
 const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, } = require("firebase/auth");
-const { getFirestore,deleteDoc, orderBy, getDoc,getDocs,addDoc,setDoc, doc, writeBatch,collection, query, collectionGroup,where,runTransaction } = require('firebase/firestore');
+const { getFirestore,deleteDoc, orderBy, updateDoc,increment, getDoc,getDocs,addDoc,setDoc, doc, writeBatch,collection, query, collectionGroup,where,runTransaction } = require('firebase/firestore');
 
 // Your Firebase configuration
 const firebaseConfig = {
@@ -203,8 +203,6 @@ router.get('/cekHistory', async (req, res) => {
   }
 });
 
-
-
 router.post('/topUp', async (req, res) => {
   const { userName, jumlah } = req.body;
 
@@ -233,6 +231,53 @@ router.post('/topUp', async (req, res) => {
 
       res.status(200).send("Top up berhasil");
     }
+  } catch (error) {
+    res.status(400).send(error.message);
+  }
+});
+
+
+router.post('/transfer', async (req, res) => {
+  const { userName, jumlah, tujuan } = req.body;
+
+  try {
+    // Query the sender's balance
+    const senderQuery = query(collection(firestore, 'balance'), where('userName', '==', userName));
+    const senderSnapshot = await getDocs(senderQuery);
+
+    if (senderSnapshot.empty) {
+      return res.status(400).send("User tidak ditemukan");
+    }
+
+    const senderDoc = senderSnapshot.docs[0];
+    const senderData = senderDoc.data();
+
+    if (senderData.balance === undefined || senderData.balance < jumlah) {
+      return res.status(400).send("Saldo tidak cukup");
+    }
+
+    // Query the recipient's balance
+    const recipientQuery = query(collection(firestore, 'balance'), where('userName', '==', tujuan));
+    const recipientSnapshot = await getDocs(recipientQuery);
+
+    if (recipientSnapshot.empty) {
+      return res.status(400).send("Tujuan tidak ditemukan");
+    }
+
+    const recipientDoc = recipientSnapshot.docs[0];
+
+    // Deduct the amount from the sender's balance
+    await updateDoc(senderDoc.ref, {
+      balance: increment(-jumlah)
+    });
+
+    // Add the amount to the recipient's balance
+    await updateDoc(recipientDoc.ref, {
+      balance: increment(jumlah)
+    });
+
+    res.status(200).send("Transfer berhasil");
+
   } catch (error) {
     res.status(400).send(error.message);
   }
