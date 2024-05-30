@@ -1,171 +1,146 @@
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
+const admin = require('firebase-admin');
 const router = express.Router();
 
-const { initializeApp } = require("firebase/app");
-const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,deleteUser } = require("firebase/auth");
-const { getFirestore,Timestamp, deleteDoc, orderBy, updateDoc,increment, getDoc,getDocs,addDoc,setDoc, doc, writeBatch,collection, query, collectionGroup,where,runTransaction } = require('firebase/firestore');
+const serviceAccount = require('../serviceAccount.json');
 
-// Your Firebase configuration
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY,
-  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.FIREBASE_PROJECT_ID,
-  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.FIREBASE_APP_ID
-};
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
 
-// Initialize Firebase App
-const firebaseApp = initializeApp(firebaseConfig);
-
-// Inisialisasi Firebase Authentication
-const auth = getAuth(firebaseApp);
-const firestore = getFirestore(firebaseApp);
+const firestore = admin.firestore();
+const auth = admin.auth();
 
 // Fungsi untuk menghapus dokumen dari koleksi tertentu berdasarkan userName
 const deleteDocuments = async (collectionName, userName) => {
-  const collectionRef = collection(firestore, collectionName);
-  const q = query(collectionRef, where("userName", "==", userName));
-  const querySnapshot = await getDocs(q);
+  const collectionRef = firestore.collection(collectionName);
+  const q = collectionRef.where("userName", "==", userName);
+  const querySnapshot = await q.get();
 
   const deletePromises = [];
   querySnapshot.forEach((document) => {
-    deletePromises.push(deleteDoc(doc(firestore, collectionName, document.id)));
+    deletePromises.push(document.ref.delete());
   });
 
   await Promise.all(deletePromises);
 };
 
-const deleteUserByEmail = async (email) => {
-  const auth = getAuth();
-  const firestore = getFirestore();
-  const usersRef = collection(firestore, 'users');
-  const q = query(usersRef, where("email", "==", email));
-  const querySnapshot = await getDocs(q);
+// Fungsi untuk menghapus pengguna berdasarkan UID
+const deleteUserByUID = async (uid) => {
+  try {
+    // Hapus dokumen Firestore
+    await firestore.collection('users').doc(uid).delete();
+    console.log(`Firestore document for UID ${uid} deleted.`);
 
-  if (!querySnapshot.empty) {
-    const userDoc = querySnapshot.docs[0];
-    const uid = userDoc.id;
-
-    // Delete Firestore document
-    await deleteDoc(doc(firestore, 'users', uid));
-
-    // Delete Authentication user
-    await deleteUser(auth.currentUser);
-
-  } else {
-    console.log('No user found with the provided email.');
+    // Hapus pengguna dari Firebase Authentication
+    await auth.deleteUser(uid);
+    console.log(`User with UID ${uid} deleted from Firebase Authentication.`);
+  } catch (error) {
+    console.error('Error deleting user:', error);
   }
 };
 
 const addHistory = async (firestore, userName, jumlah, kategori) => {
   const historyData = {
-    date: Timestamp.now(), // Using Firebase Timestamp
-    jumlah: String(jumlah), // Convert jumlah to string
+    date: admin.firestore.Timestamp.now(),
+    jumlah: String(jumlah),
     kategori: kategori,
     userName: userName
   };
-  await addDoc(collection(firestore, 'History'), historyData);
+  await firestore.collection('History').add(historyData);
 };
 
-
-router.delete('/delete', async (req, res) => {
-  const {userName, email} = req.body;
+router.post('/delete', async (req, res) => {
+  const { userName, uid } = req.body;
 
   try {
-
-    await deleteUserByEmail(email);
-    // Hapus dari koleksi 'balance'
+    await deleteUserByUID(uid);
     await deleteDocuments('balance', userName);
-
-    // Hapus dari koleksi 'users'
     await deleteDocuments('users', userName);
-
-    // Hapus dari koleksi 'card'
     await deleteDocuments('card', userName);
-
     await deleteDocuments('History', userName);
 
-    res.status(200).send(`Dokumen dengan userName ${userName} berhasil dihapus.`);
+    res.status(200).send({ message: "Delete successful" });
   } catch (error) {
-    console.error("Terjadi kesalahan saat menghapus dokumen:", error);
-    res.status(500).send("Terjadi kesalahan saat menghapus dokumen.");
+    console.error("Error deleting documents:", error);
+    res.status(500).send("Error deleting documents.");
   }
 });
 
-// Endpoint untuk registrasi
+// Endpoint lain tetap sama seperti sebelumnya, hanya perlu diperbarui untuk menggunakan Firebase Admin SDK
 router.post('/register', async (req, res) => {
-  const { email, password,nama, userName, noTlp, country } = req.body;
+  const { email, password, nama, userName, noTlp, country } = req.body;
 
   try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-    // Lakukan sesuatu dengan user jika registrasi berhasil
-    
-    // Simpan data tambahan pengguna ke Firestore
-    await addDoc(collection(firestore, 'users'), {
+    const userRecord = await auth.createUser({
+      email: email,
+      password: password,
+    });
+    const uid = userRecord.uid;
+
+    await firestore.collection('users').doc(uid).set({
       nama,
       email,
       userName,
       noTlp,
       country
     });
-    await addDoc(collection(firestore, 'card'), {
+    await firestore.collection('card').add({
       userName,
       bank: "Fulus Bank",
       cardNumber: "200",
-      status : "active",
+      status: "active",
       valid: new Date()
     });
-    await addDoc(collection(firestore, 'balance'), {
+    await firestore.collection('balance').add({
       userName,
       balance: 0
     });
 
-    res.status(200).json({ message: "berhasil" });
+    res.status(200).json({ message: "Registration successful" });
   } catch (error) {
     res.status(400).send(error.message);
   }
 });
 
-// Endpoint untuk login
+// Endpoint login dan lainnya tetap sama
 router.post('/login', async (req, res) => {
   const { userName, password } = req.body;
 
   try {
-    // Lakukan verifikasi kredensial menggunakan signInWithEmailAndPassword
-    const q = query(collection(firestore, 'users'), where('userName', '==', userName));
-    const querySnapshot = await getDocs(q);
+    const q = firestore.collection('users').where('userName', '==', userName);
+    const querySnapshot = await q.get();
     const profiles = [];
+
     if (querySnapshot.empty) {
-      return res.status(400).send({ message: "User tidak ditemukan" });
+      return res.status(400).send({ message: "User not found" });
     } else {
       querySnapshot.forEach((doc) => {
         profiles.push(doc.data());
       });
     }
+
     const email = profiles[0].email;
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const userCredential = await auth.signInWithEmailAndPassword(email, password);
     const user = userCredential.user;
-    // Lakukan sesuatu dengan user jika login berhasil
-    return res.status(200).json({ message: "Login berhasil" });
+
+    return res.status(200).json({ message: "Login successful" });
   } catch (error) {
-    return res.status(400).send({ message: "error" });
+    return res.status(400).send({ message: "Error logging in" });
   }
 });
-
 
 router.get('/cekSaldo', async (req, res) => {
   const { userName } = req.query;
 
   try {
-    const q = query(collection(firestore, 'balance'), where('userName', '==', userName));
-    const querySnapshot = await getDocs(q);
+    const q = firestore.collection('balance').where('userName', '==', userName);
+    const querySnapshot = await q.get();
 
     if (querySnapshot.empty) {
-      res.status(400).send("User tidak ditemukan");
+      res.status(400).send("User not found");
     } else {
       const balances = [];
       querySnapshot.forEach((doc) => {
@@ -174,23 +149,22 @@ router.get('/cekSaldo', async (req, res) => {
           balances.push(data.balance);
         }
       });
-      res.status(200).json({ message: balances[0]});
+      res.status(200).json({ message: balances[0] });
     }
   } catch (error) {
     res.status(400).send(error.message);
   }
 });
 
-
 router.get('/cekProfile', async (req, res) => {
   const { userName } = req.query;
 
   try {
-    const q = query(collection(firestore, 'users'), where('userName', '==', userName));
-    const querySnapshot = await getDocs(q);
+    const q = firestore.collection('users').where('userName', '==', userName);
+    const querySnapshot = await q.get();
 
     if (querySnapshot.empty) {
-      res.status(400).send("User tidak ditemukan");
+      res.status(400).send("User not found");
     } else {
       const profiles = [];
       querySnapshot.forEach((doc) => {
@@ -207,16 +181,15 @@ router.get('/cekHistory', async (req, res) => {
   const { userName } = req.query;
 
   try {
-    const q = query(collection(firestore, 'History'), where('userName', '==', userName), orderBy('date', 'desc')); // Mengurutkan berdasarkan tanggal terbaru
-    const querySnapshot = await getDocs(q);
+    const q = firestore.collection('History').where('userName', '==', userName).orderBy('date', 'desc');
+    const querySnapshot = await q.get();
 
     if (querySnapshot.empty) {
-      res.status(400).send("User tidak ditemukan");
+      res.status(400).send("User not found");
     } else {
       const profiles = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        // Format the date field to a string
         if (data.date) {
           const dateObj = data.date.toDate();
           data.date = dateObj.toLocaleString('id-ID', {
@@ -230,7 +203,6 @@ router.get('/cekHistory', async (req, res) => {
         profiles.push(data);
       });
 
-      // Sorting the profiles based on date (newest first)
       profiles.sort((a, b) => b.date - a.date);
 
       res.status(200).send(profiles);
@@ -244,88 +216,86 @@ router.post('/topUp', async (req, res) => {
   const { userName, jumlah } = req.body;
 
   try {
-    const q = query(collection(firestore, 'balance'), where('userName', '==', userName));
-    const querySnapshot = await getDocs(q);
+    const q = firestore.collection('balance').where('userName', '==', userName);
+    const querySnapshot = await q.get();
 
     if (querySnapshot.empty) {
-      res.status(400).send("User tidak ditemukan");
+      res.status(400).send("User not found");
     } else {
-      // Asumsi hanya ada satu dokumen dengan userName tersebut
       const userDoc = querySnapshot.docs[0];
       const userRef = userDoc.ref;
 
-      await runTransaction(firestore, async (transaction) => {
+      await firestore.runTransaction(async (transaction) => {
         const docSnapshot = await transaction.get(userRef);
 
         if (!docSnapshot.exists()) {
-          throw "User tidak ditemukan";
+          throw "User not found";
         }
 
         const currentBalance = docSnapshot.data().balance || 0;
-        const newBalance = currentBalance + jumlah; // Menambahkan jumlah langsung ke saldo
+        const newBalance = currentBalance + jumlah;
         transaction.update(userRef, { balance: newBalance });
       });
 
-      // Call the addHistory function
       await addHistory(firestore, userName, jumlah, "Dana Masuk");
 
-      res.status(200).send({ message: "TopUp Berhasil" });
+      res.status(200).send({ message: "TopUp successful" });
     }
   } catch (error) {
     res.status(400).send(error.message);
   }
 });
 
-
 router.post('/transfer', async (req, res) => {
   const { userName, jumlah, tujuan } = req.body;
 
   try {
-    // Query the sender's balance
-    const senderQuery = query(collection(firestore, 'balance'), where('userName', '==', userName));
-    const senderSnapshot = await getDocs(senderQuery);
+    const senderQuery = firestore.collection('balance').where('userName', '==', userName);
+    const senderSnapshot = await senderQuery.get();
 
     if (senderSnapshot.empty) {
-      return res.status(400).send({message: "User tidak ditemukan"});
+      return res.status(400).send({ message: "User not found" });
     }
 
     const senderDoc = senderSnapshot.docs[0];
     const senderData = senderDoc.data();
 
     if (senderData.balance === undefined || senderData.balance < jumlah) {
-      return res.status(400).send({message: "Saldo Tidak Cukup"});
+      return res.status(400).send({ message: "Insufficient balance" });
     }
 
-    // Query the recipient's balance
-    const recipientQuery = query(collection(firestore, 'balance'), where('userName', '==', tujuan));
-    const recipientSnapshot = await getDocs(recipientQuery);
+    const recipientQuery = firestore.collection('balance').where('userName', '==', tujuan);
+    const recipientSnapshot = await recipientQuery.get();
 
     if (recipientSnapshot.empty) {
-      return res.status(400).send({message: "Tujuan tidak ditemukan"});
+      return res.status(400).send({ message: "Recipient not found" });
     }
 
     const recipientDoc = recipientSnapshot.docs[0];
+    const recipientRef = recipientDoc.ref;
 
-    // Deduct the amount from the sender's balance
-    await updateDoc(senderDoc.ref, {
-      balance: increment(-jumlah)
+    await firestore.runTransaction(async (transaction) => {
+      const senderDocSnapshot = await transaction.get(senderDoc.ref);
+      const recipientDocSnapshot = await transaction.get(recipientRef);
+
+      if (!senderDocSnapshot.exists || !recipientDocSnapshot.exists) {
+        throw "User not found";
+      }
+
+      const newSenderBalance = senderDocSnapshot.data().balance - jumlah;
+      const newRecipientBalance = recipientDocSnapshot.data().balance + jumlah;
+
+      transaction.update(senderDoc.ref, { balance: newSenderBalance });
+      transaction.update(recipientRef, { balance: newRecipientBalance });
     });
 
-    // Add the amount to the recipient's balance
-    await updateDoc(recipientDoc.ref, {
-      balance: increment(jumlah)
-    });
-
-    // Call addHistory function upon successful transfer
-    await addHistory(firestore, userName, jumlah, "Dana Keluar");
+    await addHistory(firestore, userName, -jumlah, "Dana Keluar");
     await addHistory(firestore, tujuan, jumlah, "Dana Masuk");
 
-    res.status(200).send({message: "Transfer Berhasil"});
-
+    res.status(200).send({ message: "Transfer successful" });
   } catch (error) {
     res.status(400).send(error.message);
   }
 });
-
 
 module.exports = router;
