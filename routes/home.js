@@ -4,7 +4,7 @@ const bodyParser = require('body-parser');
 const router = express.Router();
 
 const { initializeApp } = require("firebase/app");
-const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, } = require("firebase/auth");
+const { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword,deleteUser } = require("firebase/auth");
 const { getFirestore,Timestamp, deleteDoc, orderBy, updateDoc,increment, getDoc,getDocs,addDoc,setDoc, doc, writeBatch,collection, query, collectionGroup,where,runTransaction } = require('firebase/firestore');
 
 // Your Firebase configuration
@@ -40,6 +40,7 @@ const deleteDocuments = async (collectionName, userName) => {
 
 const deleteUserByEmail = async (email) => {
   const auth = getAuth();
+  const firestore = getFirestore();
   const usersRef = collection(firestore, 'users');
   const q = query(usersRef, where("email", "==", email));
   const querySnapshot = await getDocs(q);
@@ -47,10 +48,15 @@ const deleteUserByEmail = async (email) => {
   if (!querySnapshot.empty) {
     const userDoc = querySnapshot.docs[0];
     const uid = userDoc.id;
+
+    // Delete Firestore document
     await deleteDoc(doc(firestore, 'users', uid));
-    
-    const user = await auth.getUser(uid);
-    await deleteUser(user);
+
+    // Delete Authentication user
+    await deleteUser(auth.currentUser);
+
+  } else {
+    console.log('No user found with the provided email.');
   }
 };
 
