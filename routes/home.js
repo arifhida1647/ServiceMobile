@@ -38,6 +38,22 @@ const deleteDocuments = async (collectionName, userName) => {
   await Promise.all(deletePromises);
 };
 
+const deleteUserByEmail = async (email) => {
+  const auth = getAuth();
+  const usersRef = collection(firestore, 'users');
+  const q = query(usersRef, where("email", "==", email));
+  const querySnapshot = await getDocs(q);
+
+  if (!querySnapshot.empty) {
+    const userDoc = querySnapshot.docs[0];
+    const uid = userDoc.id;
+    await deleteDoc(doc(firestore, 'users', uid));
+    
+    const user = await auth.getUser(uid);
+    await deleteUser(user);
+  }
+};
+
 const addHistory = async (firestore, userName, jumlah, kategori) => {
   const historyData = {
     date: Timestamp.now(), // Using Firebase Timestamp
@@ -49,10 +65,12 @@ const addHistory = async (firestore, userName, jumlah, kategori) => {
 };
 
 
-router.delete('/delete/:userName', async (req, res) => {
-  const userName = req.params.userName;
+router.delete('/delete', async (req, res) => {
+  const {userName, email} = req.body;
 
   try {
+
+    await deleteUserByEmail(email);
     // Hapus dari koleksi 'balance'
     await deleteDocuments('balance', userName);
 
@@ -61,6 +79,8 @@ router.delete('/delete/:userName', async (req, res) => {
 
     // Hapus dari koleksi 'card'
     await deleteDocuments('card', userName);
+
+    await deleteDocuments('History', userName);
 
     res.status(200).send(`Dokumen dengan userName ${userName} berhasil dihapus.`);
   } catch (error) {
