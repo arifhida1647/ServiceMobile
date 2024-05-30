@@ -95,7 +95,7 @@ router.post('/register', async (req, res) => {
     });
     await addDoc(collection(firestore, 'balance'), {
       userName,
-      balance: "0"
+      balance: 0
     });
 
     res.status(200).json({ message: "berhasil" });
