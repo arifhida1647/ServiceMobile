@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const { initializeApp } = require("firebase/app");
-const { getAuth, signInWithEmailAndPassword } = require("firebase/auth");
+const { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail } = require("firebase/auth");
 const { getFirestore, collection, query, where, getDocs, orderBy, runTransaction, addDoc, Timestamp } = require("firebase/firestore");
 
 // Your web app's Firebase configuration
@@ -20,7 +20,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth();
 const db = getFirestore(); // Menggunakan getFirestore untuk mendapatkan objek Firestore
-
+ 
 const admin = require('firebase-admin');
 const router = express.Router();
 
@@ -101,41 +101,54 @@ router.post('/delete', async (req, res) => {
   }
 });
 
-// Endpoint lain tetap sama seperti sebelumnya, hanya perlu diperbarui untuk menggunakan Firebase Admin SDK
 router.post('/register', async (req, res) => {
   const { email, password, nama, userName, noTlp, country } = req.body;
 
+  if (!email || !password || !nama || !userName || !noTlp || !country) {
+    return res.status(400).json({ message: 'All fields are required' });
+  }
+
   try {
-    const userRecord = await auth.createUser({
-      email: email,
-      password: password,
+    // Use Firebase Admin SDK to create user
+    const userRecord = await admin.auth().createUser({
+      email,
+      password,
+      displayName: userName,
     });
     const uid = userRecord.uid;
 
-    await firestore.collection('users').doc(uid).set({
+    // Save user data to Firestore
+    await addDoc(collection(db, 'users'), {
       nama,
       email,
       userName,
       noTlp,
-      country
+      country,
+      createdAt: Timestamp.now()
     });
-    await firestore.collection('card').add({
+
+    // Add default card for the user
+    await addDoc(collection(db, 'card'), {
       userName,
       bank: "Fulus Bank",
       cardNumber: "200",
       status: "active",
       valid: new Date()
     });
-    await firestore.collection('balance').add({
+
+    // Add initial balance for the user
+    await addDoc(collection(db, 'balance'), {
       userName,
       balance: 0
     });
 
     res.status(200).json({ message: "Registration successful" });
   } catch (error) {
-    res.status(400).send(error.message);
+    console.error('Error registering user:', error);
+    res.status(400).json({ message: error.message });
   }
 });
+
 
 // Endpoint login dan lainnya tetap sama
 router.post('/login', async (req, res) => {
@@ -163,6 +176,23 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Login gagal:', error);
     res.status(400).json({ message: error.message });
+  }
+});
+
+// Endpoint for forgot password
+router.post('/forgot-password', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).send('Email is required');
+  }
+
+  try {
+    await sendPasswordResetEmail(auth, email);
+    res.status(200).send('Password reset email sent');
+  } catch (error) {
+    console.error('Error sending password reset email:', error);
+    res.status(500).send('Error sending password reset email');
   }
 });
 
@@ -288,7 +318,15 @@ router.post('/topUp', async (req, res) => {
 });
 
 router.post('/transfer', async (req, res) => {
-  const { userName, jumlah, tujuan } = req.body;
+  let { userName, jumlah, tujuan } = req.body;
+
+  // Parse jumlah to number
+  jumlah = parseFloat(jumlah);
+
+  // Validate if jumlah is a valid number
+  if (isNaN(jumlah) || jumlah <= 0) {
+    return res.status(400).send({ message: "Invalid jumlah value" });
+  }
 
   try {
     const senderQuery = query(collection(db, 'balance'), where('userName', '==', userName));
@@ -338,5 +376,6 @@ router.post('/transfer', async (req, res) => {
     res.status(400).send(error.message);
   }
 });
+
 
 module.exports = router;
