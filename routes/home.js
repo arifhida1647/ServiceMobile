@@ -27,7 +27,6 @@ const deleteDocuments = async (collectionName, userName) => {
   await Promise.all(deletePromises);
 };
 
-// Fungsi untuk menghapus pengguna berdasarkan UID
 const deleteUserByEmail = async (email) => {
   try {
     // Cari pengguna di koleksi 'users' berdasarkan email
@@ -38,14 +37,13 @@ const deleteUserByEmail = async (email) => {
     if (!userSnapshot.empty) {
       const userDoc = userSnapshot.docs[0];
       const uid = userDoc.id;
-      
+
       // Hapus dokumen pengguna dari Firestore
       await deleteDoc(doc(firestore, 'users', uid));
       console.log(`Firestore document for email ${email} deleted.`);
-      
+
       // Hapus pengguna dari Firebase Authentication
-      const auth = getAuth();
-      await deleteUser(auth, { uid });
+      await deleteUser(auth, uid);
       console.log(`User with email ${email} deleted from Firebase Authentication.`);
     } else {
       console.log(`No user found with email ${email}`);
