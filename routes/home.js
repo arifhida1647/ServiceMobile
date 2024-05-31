@@ -1,19 +1,34 @@
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
+const { initializeApp } = require("firebase/app");
+const { getAuth, signInWithEmailAndPassword } = require("firebase/auth");
+const { getFirestore, collection, query, where, getDocs } = require("firebase/firestore");
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyBR1mhSW0Mz6_-7Q2N48j3WN75jVIOXV_4",
+  authDomain: "ta-mobile-afc3d.firebaseapp.com",
+  projectId: "ta-mobile-afc3d",
+  storageBucket: "ta-mobile-afc3d.appspot.com",
+  messagingSenderId: "1097896477881",
+  appId: "1:1097896477881:web:e76d0e8c4532a6e0a6c768",
+  measurementId: "G-82S4119HG8"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth();
+const db = getFirestore(); // Menggunakan getFirestore untuk mendapatkan objek Firestore
+
 const admin = require('firebase-admin');
 const router = express.Router();
-const { loginUserWithEmailAndPassword } = require('./login');
-
 
 const serviceAccount = require('../serviceAccount.json');
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
-
-const firestore = admin.firestore();
-const auth = admin.auth();
 
 // Fungsi untuk menghapus dokumen dari koleksi tertentu berdasarkan userName
 const deleteDocuments = async (collectionName, userName) => {
@@ -28,6 +43,18 @@ const deleteDocuments = async (collectionName, userName) => {
 
   await Promise.all(deletePromises);
 };
+
+// Fungsi login menggunakan email dan password
+async function loginUserWithEmailAndPassword(email, password) {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    return "berhasil";
+  } catch (error) {
+    console.error('Login gagal:', error);
+    throw error;
+  }
+}
 
 // Fungsi untuk menghapus pengguna berdasarkan UID
 const deleteUserByUID = async (uid) => {
@@ -111,20 +138,32 @@ router.post('/register', async (req, res) => {
 
 // Endpoint login dan lainnya tetap sama
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { userName, password } = req.body;
 
   try {
-    const result = await loginUserWithEmailAndPassword(email, password);
-    if (result === "berhasil") {
-      res.json({ message: "Login Berhasil" });
+    // Mencari email berdasarkan userName
+    const usersRef = collection(db, "users"); // Menggunakan db yang sudah diinisialisasi
+    const q = query(usersRef, where("userName", "==", userName));
+    const querySnapshot = await getDocs(q);
+    if (!querySnapshot.empty) {
+      const userDoc = querySnapshot.docs[0];
+      const email = userDoc.data().email;
+      
+      // Melakukan login menggunakan fungsi loginUserWithEmailAndPassword
+      const result = await loginUserWithEmailAndPassword(email, password);
+      if (result === "berhasil") {
+        res.json({ message: "Login Berhasil" });
+      } else {
+        res.status(400).json({ message: "Login Gagal" });
+      }
     } else {
-      res.status(400).json({ message: "Login Gagal" });
+      res.status(400).json({ message: "User tidak ditemukan" });
     }
   } catch (error) {
+    console.error('Login gagal:', error);
     res.status(400).json({ message: error.message });
   }
 });
-
 
 router.get('/cekSaldo', async (req, res) => {
   const { userName } = req.query;
