@@ -3,6 +3,8 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const admin = require('firebase-admin');
 const router = express.Router();
+const { loginUserWithEmailAndPassword } = require('./login');
+
 
 const serviceAccount = require('../serviceAccount.json');
 
@@ -109,30 +111,20 @@ router.post('/register', async (req, res) => {
 
 // Endpoint login dan lainnya tetap sama
 router.post('/login', async (req, res) => {
-  const { userName, password } = req.body;
+  const { email, password } = req.body;
 
   try {
-    const q = firestore.collection('users').where('userName', '==', userName);
-    const querySnapshot = await q.get();
-    const profiles = [];
-
-    if (querySnapshot.empty) {
-      return res.status(400).send({ message: "User not found" });
+    const result = await loginUserWithEmailAndPassword(email, password);
+    if (result === "berhasil") {
+      res.json({ message: "Login Berhasil" });
     } else {
-      querySnapshot.forEach((doc) => {
-        profiles.push(doc.data());
-      });
+      res.status(400).json({ message: "Login Gagal" });
     }
-
-    const email = profiles[0].email;
-    const userCredential = await auth.signInWithEmailAndPassword(email, password);
-    const user = userCredential.user;
-
-    return res.status(200).json({ message: "Login successful" });
   } catch (error) {
-    return res.status(400).send({ message: "Error logging in" });
+    res.status(400).json({ message: error.message });
   }
 });
+
 
 router.get('/cekSaldo', async (req, res) => {
   const { userName } = req.query;
