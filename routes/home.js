@@ -230,8 +230,8 @@ router.post('/topUp', async (req, res) => {
       await firestore.runTransaction(async (transaction) => {
         const docSnapshot = await transaction.get(userRef);
 
-        if (!docSnapshot.exists()) {
-          throw "User not found";
+        if (!docSnapshot.exists) {
+          throw new Error("User not found");
         }
 
         const currentBalance = docSnapshot.data().balance || 0;
