@@ -28,15 +28,28 @@ const deleteDocuments = async (collectionName, userName) => {
 };
 
 // Fungsi untuk menghapus pengguna berdasarkan UID
-const deleteUserByUID = async (uid) => {
+const deleteUserByEmail = async (email) => {
   try {
-    // Hapus dokumen Firestore
-    await firestore.collection('users').doc(uid).delete();
-    console.log(`Firestore document for UID ${uid} deleted.`);
+    // Cari pengguna di koleksi 'users' berdasarkan email
+    const usersRef = collection(firestore, 'users');
+    const userQuery = query(usersRef, where("email", "==", email));
+    const userSnapshot = await getDocs(userQuery);
 
-    // Hapus pengguna dari Firebase Authentication
-    await auth.deleteUser(uid);
-    console.log(`User with UID ${uid} deleted from Firebase Authentication.`);
+    if (!userSnapshot.empty) {
+      const userDoc = userSnapshot.docs[0];
+      const uid = userDoc.id;
+      
+      // Hapus dokumen pengguna dari Firestore
+      await deleteDoc(doc(firestore, 'users', uid));
+      console.log(`Firestore document for email ${email} deleted.`);
+      
+      // Hapus pengguna dari Firebase Authentication
+      const auth = getAuth();
+      await deleteUser(auth, { uid });
+      console.log(`User with email ${email} deleted from Firebase Authentication.`);
+    } else {
+      console.log(`No user found with email ${email}`);
+    }
   } catch (error) {
     console.error('Error deleting user:', error);
   }
@@ -53,10 +66,10 @@ const addHistory = async (firestore, userName, jumlah, kategori) => {
 };
 
 router.post('/delete', async (req, res) => {
-  const { userName, uid } = req.body;
+  const { userName, email } = req.body;
 
   try {
-    await deleteUserByUID(uid);
+    await deleteUserByEmail(email);
     await deleteDocuments('balance', userName);
     await deleteDocuments('users', userName);
     await deleteDocuments('card', userName);
