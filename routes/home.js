@@ -3,7 +3,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const { initializeApp } = require("firebase/app");
 const { getAuth, signInWithEmailAndPassword } = require("firebase/auth");
-const { getFirestore, collection, query, where, getDocs } = require("firebase/firestore");
+const { getFirestore, collection, query, where, getDocs, orderBy, runTransaction, addDoc, Timestamp } = require("firebase/firestore");
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -71,15 +71,16 @@ const deleteUserByUID = async (uid) => {
   }
 };
 
-const addHistory = async (firestore, userName, jumlah, kategori) => {
+const addHistory = async (db, userName, jumlah, kategori) => {
   const historyData = {
-    date: admin.firestore.Timestamp.now(),
+    date: Timestamp.now(),
     jumlah: String(jumlah),
     kategori: kategori,
     userName: userName
   };
-  await firestore.collection('History').add(historyData);
+  await addDoc(collection(db, 'History'), historyData);
 };
+
 
 router.post('/delete', async (req, res) => {
   const { userName, email } = req.body;
@@ -169,8 +170,10 @@ router.get('/cekSaldo', async (req, res) => {
   const { userName } = req.query;
 
   try {
-    const q = firestore.collection('balance').where('userName', '==', userName);
-    const querySnapshot = await q.get();
+    // Mencari saldo berdasarkan userName
+    const balanceRef = collection(db, "balance");
+    const q = query(balanceRef, where("userName", "==", userName));
+    const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
       res.status(400).send("User not found");
@@ -185,17 +188,19 @@ router.get('/cekSaldo', async (req, res) => {
       res.status(200).json({ message: balances[0] });
     }
   } catch (error) {
+    console.error('Error fetching balance:', error);
     res.status(400).send(error.message);
   }
 });
+
 
 router.get('/cekProfile', async (req, res) => {
   const { userName } = req.query;
 
   try {
-    const q = firestore.collection('users').where('userName', '==', userName);
-    const querySnapshot = await q.get();
-
+    const userRef = collection(db, "users");
+    const q = query(userRef, where("userName", "==", userName));
+    const querySnapshot = await getDocs(q);
     if (querySnapshot.empty) {
       res.status(400).send("User not found");
     } else {
@@ -214,8 +219,10 @@ router.get('/cekHistory', async (req, res) => {
   const { userName } = req.query;
 
   try {
-    const q = firestore.collection('History').where('userName', '==', userName).orderBy('date', 'desc');
-    const querySnapshot = await q.get();
+    // Mencari history berdasarkan userName dan mengurutkan berdasarkan tanggal
+    const historyRef = collection(db, "History");
+    const q = query(historyRef, where("userName", "==", userName), orderBy("date", "desc"));
+    const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
       res.status(400).send("User not found");
@@ -236,11 +243,10 @@ router.get('/cekHistory', async (req, res) => {
         profiles.push(data);
       });
 
-      profiles.sort((a, b) => b.date - a.date);
-
-      res.status(200).send(profiles);
+      res.status(200).json(profiles);
     }
   } catch (error) {
+    console.error('Error fetching history:', error);
     res.status(400).send(error.message);
   }
 });
@@ -249,8 +255,9 @@ router.post('/topUp', async (req, res) => {
   const { userName, jumlah } = req.body;
 
   try {
-    const q = firestore.collection('balance').where('userName', '==', userName);
-    const querySnapshot = await q.get();
+    const balanceRef = collection(db, "balance");
+    const q = query(balanceRef, where("userName", "==", userName));
+    const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
       res.status(400).send("User not found");
@@ -258,7 +265,7 @@ router.post('/topUp', async (req, res) => {
       const userDoc = querySnapshot.docs[0];
       const userRef = userDoc.ref;
 
-      await firestore.runTransaction(async (transaction) => {
+      await runTransaction(db, async (transaction) => {
         const docSnapshot = await transaction.get(userRef);
 
         if (!docSnapshot.exists) {
@@ -270,11 +277,12 @@ router.post('/topUp', async (req, res) => {
         transaction.update(userRef, { balance: newBalance });
       });
 
-      await addHistory(firestore, userName, jumlah, "Dana Masuk");
+      await addHistory(db, userName, jumlah, "Dana Masuk");
 
       res.status(200).send({ message: "TopUp successful" });
     }
   } catch (error) {
+    console.error('Error processing top up:', error);
     res.status(400).send(error.message);
   }
 });
@@ -283,8 +291,8 @@ router.post('/transfer', async (req, res) => {
   const { userName, jumlah, tujuan } = req.body;
 
   try {
-    const senderQuery = firestore.collection('balance').where('userName', '==', userName);
-    const senderSnapshot = await senderQuery.get();
+    const senderQuery = query(collection(db, 'balance'), where('userName', '==', userName));
+    const senderSnapshot = await getDocs(senderQuery);
 
     if (senderSnapshot.empty) {
       return res.status(400).send({ message: "User not found" });
@@ -297,8 +305,8 @@ router.post('/transfer', async (req, res) => {
       return res.status(400).send({ message: "Insufficient balance" });
     }
 
-    const recipientQuery = firestore.collection('balance').where('userName', '==', tujuan);
-    const recipientSnapshot = await recipientQuery.get();
+    const recipientQuery = query(collection(db, 'balance'), where('userName', '==', tujuan));
+    const recipientSnapshot = await getDocs(recipientQuery);
 
     if (recipientSnapshot.empty) {
       return res.status(400).send({ message: "Recipient not found" });
@@ -307,12 +315,12 @@ router.post('/transfer', async (req, res) => {
     const recipientDoc = recipientSnapshot.docs[0];
     const recipientRef = recipientDoc.ref;
 
-    await firestore.runTransaction(async (transaction) => {
+    await runTransaction(db, async (transaction) => {
       const senderDocSnapshot = await transaction.get(senderDoc.ref);
       const recipientDocSnapshot = await transaction.get(recipientRef);
 
       if (!senderDocSnapshot.exists || !recipientDocSnapshot.exists) {
-        throw "User not found";
+        throw new Error("User not found");
       }
 
       const newSenderBalance = senderDocSnapshot.data().balance - jumlah;
@@ -322,8 +330,8 @@ router.post('/transfer', async (req, res) => {
       transaction.update(recipientRef, { balance: newRecipientBalance });
     });
 
-    await addHistory(firestore, userName, -jumlah, "Dana Keluar");
-    await addHistory(firestore, tujuan, jumlah, "Dana Masuk");
+    await addHistory(db, userName, -jumlah, "Dana Keluar");
+    await addHistory(db, tujuan, jumlah, "Dana Masuk");
 
     res.status(200).send({ message: "Transfer successful" });
   } catch (error) {
