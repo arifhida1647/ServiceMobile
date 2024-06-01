@@ -29,8 +29,8 @@ const serviceAccount = require('../serviceAccount.json');
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
+const firestore = admin.firestore();
 
-// Fungsi untuk menghapus dokumen dari koleksi tertentu berdasarkan userName
 const deleteDocuments = async (collectionName, userName) => {
   const collectionRef = firestore.collection(collectionName);
   const q = collectionRef.where("userName", "==", userName);
@@ -42,6 +42,21 @@ const deleteDocuments = async (collectionName, userName) => {
   });
 
   await Promise.all(deletePromises);
+};
+
+// Function to delete user by UID
+const deleteUserByUID = async (uid) => {
+  try {
+    // Delete Firestore document
+    await firestore.collection('users').doc(uid).delete();
+    console.log(`Firestore document for UID ${uid} deleted.`);
+
+    // Delete user from Firebase Authentication
+    await admin.auth().deleteUser(uid);
+    console.log(`User with UID ${uid} deleted from Firebase Authentication.`);
+  } catch (error) {
+    console.error('Error deleting user:', error);
+  }
 };
 
 // Fungsi login menggunakan email dan password
@@ -56,20 +71,6 @@ async function loginUserWithEmailAndPassword(email, password) {
   }
 }
 
-// Fungsi untuk menghapus pengguna berdasarkan UID
-const deleteUserByUID = async (uid) => {
-  try {
-    // Hapus dokumen Firestore
-    await firestore.collection('users').doc(uid).delete();
-    console.log(`Firestore document for UID ${uid} deleted.`);
-
-    // Hapus pengguna dari Firebase Authentication
-    await auth.deleteUser(uid);
-    console.log(`User with UID ${uid} deleted from Firebase Authentication.`);
-  } catch (error) {
-    console.error('Error deleting user:', error);
-  }
-};
 
 const addHistory = async (db, userName, jumlah, kategori) => {
   const historyData = {
@@ -86,7 +87,7 @@ router.post('/delete', async (req, res) => {
   const { userName, email } = req.body;
 
   try {
-    const userRecord = await auth.getUserByEmail(email);
+    const userRecord = await admin.auth().getUserByEmail(email);
     const uid = userRecord.uid;
     await deleteUserByUID(uid);
     await deleteDocuments('balance', userName);
