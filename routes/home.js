@@ -307,7 +307,7 @@ router.post('/topUp', async (req, res) => {
         transaction.update(userRef, { balance: newBalance });
       });
 
-      await addHistory(db, userName, jumlah, "Dana Masuk");
+      await addHistory(db, userName, jumlah, "Cash In");
 
       res.status(200).send({ message: "TopUp successful" });
     }
@@ -368,8 +368,8 @@ router.post('/transfer', async (req, res) => {
       transaction.update(recipientRef, { balance: newRecipientBalance });
     });
 
-    await addHistory(db, userName, -jumlah, "Dana Keluar");
-    await addHistory(db, tujuan, jumlah, "Dana Masuk");
+    await addHistory(db, userName, -jumlah, "Cash Out");
+    await addHistory(db, tujuan, jumlah, "Cash In");
 
     res.status(200).send({ message: "Transfer successful" });
   } catch (error) {
