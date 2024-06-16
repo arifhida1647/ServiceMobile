@@ -3,6 +3,10 @@
 ### Description
 This repository contains the backend implementation for the FULUS application using Express.js.
 
+
+### Documentation
+[This repository contains the backend implementation for the FULUS application using Express.js.](https://documenter.getpostman.com/view/29261916/2sA3XQi2a3)
+
 ### Prerequisites
 - Node.js installed on your machine. You can download it from [nodejs.org](https://nodejs.org/).
 
