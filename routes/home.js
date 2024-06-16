@@ -7,13 +7,13 @@ const { getFirestore, collection, query, where, getDocs, orderBy, runTransaction
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBR1mhSW0Mz6_-7Q2N48j3WN75jVIOXV_4",
-  authDomain: "ta-mobile-afc3d.firebaseapp.com",
-  projectId: "ta-mobile-afc3d",
-  storageBucket: "ta-mobile-afc3d.appspot.com",
-  messagingSenderId: "1097896477881",
-  appId: "1:1097896477881:web:e76d0e8c4532a6e0a6c768",
-  measurementId: "G-82S4119HG8"
+  apiKey: process.env.FIREBASE_API_KEY,
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.FIREBASE_APP_ID,
+  measurementId: process.env.FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
